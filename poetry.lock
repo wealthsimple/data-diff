@@ -2112,15 +2112,20 @@ resolved_reference = "fa23f08cb10437fee298f9a9f3b446f2e87528a5"
 
 [[package]]
 name = "sqlparse"
-version = "0.4.3"
+version = "0.4.4"
 description = "A non-validating SQL parser."
 category = "main"
 optional = false
 python-versions = ">=3.5"
 files = [
-    {file = "sqlparse-0.4.3-py3-none-any.whl", hash = "sha256:0323c0ec29cd52bceabc1b4d9d579e311f3e4961b98d174201d5622a23b85e34"},
-    {file = "sqlparse-0.4.3.tar.gz", hash = "sha256:69ca804846bb114d2ec380e4360a8a340db83f0ccf3afceeb1404df028f57268"},
+    {file = "sqlparse-0.4.4-py3-none-any.whl", hash = "sha256:5430a4fe2ac7d0f93e66f1efc6e1338a41884b7ddf2a350cedd20ccc4d9d28f3"},
+    {file = "sqlparse-0.4.4.tar.gz", hash = "sha256:d446183e84b8349fa3061f0fe7f06ca94ba65b426946ffebe6e3e8295332420c"},
 ]
+
+[package.extras]
+dev = ["build", "flake8"]
+doc = ["sphinx"]
+test = ["pytest", "pytest-cov"]
 
 [[package]]
 name = "text-unidecode"
@@ -2368,4 +2373,4 @@ vertica = []
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.7"
-content-hash = "76615cdd56c85e10cf1b371d5c87d8fa463c41fd5d3b89769905005e43c9dbf6"
+content-hash = "fb22403c80c0d0206f4ef69a572c587f35cf21a360f118d2932bba3370b28b96"
