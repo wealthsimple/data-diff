@@ -168,7 +168,7 @@ class TableSegment:
     # group_by column
     group_by_column: str = None 
     hash_query_type: str = 'multi'
-    true_key_indices: list = None
+    true_key_indices: list = None # TODO: remove on next PR
     group_min: Any = None
     group_max: Any = None
     group_grains: list = ['month', 'day', 'minute', 'second']
@@ -310,15 +310,20 @@ class TableSegment:
     @property
     def relevant_columns(self) -> List[str]:
         extras = list(self.extra_columns)
-        key_cols = self.true_key_columns or self.key_columns
+        key_cols = self.true_key_columns or list(self.key_columns)
 
         if self.update_column and self.update_column not in extras \
-            and self.update_column not in list(self.key_columns):
+            and self.update_column not in key_cols:
             extras = [self.update_column] + extras
 
         if self.group_by_column and self.group_by_column not in extras \
-            and self.group_by_column not in list(self.key_columns):
+            and self.group_by_column not in key_cols:
             extras = [self.group_by_column] + extras
+
+        # handle case where true_key_columns doesn't contain all key_columns
+        if self.true_key_columns:
+            key_extras = [c for c in self.key_columns if c not in extras]
+            extras = extras + key_extras
 
         return list(key_cols) + extras
     
@@ -327,7 +332,8 @@ class TableSegment:
         if not self.update_column:
             raise ValueError(f'No update_column specified for table {self.table_path}')
         # key columns are first, so next index is the update_column
-        return len(self.key_columns)
+        key_cols = self.true_key_columns or list(self.key_columns)
+        return len(key_cols)
     
     def col_conversion(self, c: str) -> tuple[Optional[str], Optional[list]]:
         c_type = self._schema[c].__class__.__name__
