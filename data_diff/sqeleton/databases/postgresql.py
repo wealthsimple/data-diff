@@ -1,3 +1,5 @@
+from typing import List
+from ..utils import match_regexps
 from ..abcs.database_types import (
     DbPath,
     JSON,
@@ -14,7 +16,7 @@ from ..abcs.database_types import (
     Date,
 )
 from ..abcs.mixins import AbstractMixin_MD5, AbstractMixin_NormalizeValue
-from .base import BaseDialect, ThreadedDatabase, import_helper, ConnectError, Mixin_Schema
+from .base import BaseDialect, ThreadedDatabase, import_helper, ConnectError, Mixin_Schema, ColType
 from .base import MD5_HEXDIGITS, CHECKSUM_HEXDIGITS, _CHECKSUM_BITSIZE, TIMESTAMP_PRECISION_POS, Mixin_RandomSample
 
 SESSION_TIME_ZONE = None  # Changed by the tests
@@ -103,6 +105,29 @@ class PostgresqlDialect(BaseDialect, Mixin_Schema):
     def current_timestamp(self) -> str:
         return "current_timestamp"
 
+    def set_timeout(self, timeout: int) -> str:
+        return f"SET statement_timeout = {timeout * 1000}"
+
+    def parse_type(
+        self,
+        table_path: DbPath,
+        col_name: str,
+        type_repr: str,
+        datetime_precision: int = None,
+        numeric_precision: int = None,
+        numeric_scale: int = None,
+    ) -> ColType:
+        string_regexps = {
+            r"character varying\((\d+)\)": Text,
+        }
+        for m, n_cls in match_regexps(string_regexps, type_repr):
+            return n_cls()
+
+        return super().parse_type(table_path, col_name, type_repr, datetime_precision, numeric_precision)
+    
+    def concat_with_sep(self, items: List[str], sep: str) -> str:
+        return f"concat_ws('{sep}', {', '.join(items)})"
+
     def type_repr(self, t) -> str:
         if isinstance(t, TimestampTZ):
             return f"timestamp ({t.precision}) with time zone"
@@ -171,3 +196,8 @@ class PostgreSQL(ThreadedDatabase):
         raise ValueError(
             f"{self.name}: Bad table path for {self}: '{'.'.join(path)}'. Expected format: table, schema.table, or database.schema.table"
         )
+
+    def set_query_timeout(self, timeout: int) -> None:
+        if self.query_timeout != timeout:
+            self.query_timeout = timeout
+            self.query(self.dialect.set_timeout(self.query_timeout))

@@ -4,6 +4,7 @@ from ..utils import match_regexps
 from ..abcs.database_types import (
     Decimal,
     Float,
+    StringType,
     Text,
     DbPath,
     TemporalType,
@@ -67,6 +68,9 @@ class Mixin_NormalizeValue(AbstractMixin_NormalizeValue):
             format_str += "0." + "9" * (coltype.precision - 1) + "0"
         return f"to_char({value}, '{format_str}')"
 
+    def normalize_string(self, value: str, coltype: StringType) -> str:
+        # why did we have to add this? Makes varchar cols with emojis compat with redshift
+        return f"cast(CONVERT({value}, 'AL32UTF8') as varchar(1024))"
 
 class Mixin_Schema(AbstractMixin_Schema):
     def list_tables(self, table_schema: str, like: Compilable = None) -> Compilable:
@@ -194,6 +198,19 @@ class Oracle(ThreadedDatabase):
             return super()._query_cursor(c, sql_code)
         except self._oracle.DatabaseError as e:
             raise QueryError(e)
+
+    def query_table_schema(self, path: DbPath) -> Dict[str, tuple]:
+        rows = self.query(self.select_table_schema(path), list)
+        if not rows:
+            raise RuntimeError(f"{self.name}: Table '{'.'.join(path)}' does not exist, or has no columns")
+
+        d = {r[0]: r for r in rows}
+        
+        # all oracle tables have a ROWID pseudocolumn
+        d['ROWID'] = ('ROWID', 'VARCHAR2', 6, None, None)
+
+        assert (len(d)-1) == len(rows)
+        return d
 
     def select_table_schema(self, path: DbPath) -> str:
         schema, name = self._normalize_table_path(path)

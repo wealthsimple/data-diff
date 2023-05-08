@@ -1,4 +1,5 @@
 from typing import List, Dict
+from sqeleton.utils import join_iter
 from ..abcs.database_types import (
     Float,
     JSON,
@@ -28,7 +29,13 @@ class Mixin_NormalizeValue(Mixin_NormalizeValue):
         if coltype.rounds:
             timestamp = f"{value}::timestamp(6)"
             # Get seconds since epoch. Redshift doesn't support milli- or micro-seconds.
-            secs = f"timestamp 'epoch' + round(extract(epoch from {timestamp})::decimal(38)"
+            # NOTE: V2: Change to date_part is to support future dates where extract(epoch..) fails
+            #   due to an overflow error (since it seems epoch must be 32-bit in Redshift)
+            # secs = f"timestamp 'epoch' + round(date_part(epoch, {timestamp})::decimal(38)" # V2
+
+            # NOTE: V3 - change to TRUNC instead of ::decimal(38) to prevent rounding. This matches
+            #         the behavior in Oracle at least. Unsure about Postgres.
+            secs = f"timestamp 'epoch' + round(TRUNC(date_part(epoch, {timestamp}))" # V3
             # Get the milliseconds from timestamp.
             ms = f"extract(ms from {timestamp})"
             # Get the microseconds from timestamp, without the milliseconds!
@@ -64,6 +71,10 @@ class Dialect(PostgresqlDialect):
     def concat(self, items: List[str]) -> str:
         joined_exprs = " || ".join(items)
         return f"({joined_exprs})"
+    
+    def concat_with_sep(self, items: List[str], sep: str) -> str:
+        items = list(join_iter(f"'{sep}'", items))
+        return self.concat(items)
 
     def is_distinct_from(self, a: str, b: str) -> str:
         return f"({a} IS NULL != {b} IS NULL) OR ({a}!={b})"
@@ -78,6 +89,7 @@ class Redshift(PostgreSQL):
     dialect = Dialect()
     CONNECT_URI_HELP = "redshift://<user>:<password>@<host>/<database>"
     CONNECT_URI_PARAMS = ["database?"]
+    SUPPORTS_UNIQUE_CONSTAINT = False # seems required otherwise JOINDIFF errors out
 
     def select_table_schema(self, path: DbPath) -> str:
         database, schema, table = self._normalize_table_path(path)
@@ -159,9 +171,9 @@ class Redshift(PostgreSQL):
             return super().query_table_schema(path)
         except RuntimeError:
             try:
-                return self.query_external_table_schema(path)	
-            except RuntimeError:	
-                return self.query_pg_get_cols() 
+                return self.query_external_table_schema(path)
+            except RuntimeError:
+                return self.query_pg_get_cols(path) 
 
     def _normalize_table_path(self, path: DbPath) -> DbPath:
         if len(path) == 1:

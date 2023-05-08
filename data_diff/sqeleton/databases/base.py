@@ -251,7 +251,8 @@ class BaseDialect(AbstractDialect):
 
         elif issubclass(cls, Decimal):
             if numeric_scale is None:
-                numeric_scale = 0  # Needed for Oracle.
+                # in Oracle, if scale is null values are allowed ANY scale. Set to common maximum among databases
+                numeric_scale = 18
             return cls(precision=numeric_scale)
 
         elif issubclass(cls, Float):
@@ -553,6 +554,7 @@ class ThreadedDatabase(Database):
 
     Used for database connectors that do not support sharing their connection between different threads.
     """
+    query_timeout = None
 
     def __init__(self, thread_count=1):
         self._init_error = None
@@ -588,6 +590,9 @@ class ThreadedDatabase(Database):
     @property
     def is_autocommit(self) -> bool:
         return False
+    
+    def set_query_timeout(self, timeout: int) -> None:
+        logging.warn('Query timeout is not yet supported for this DB')
 
 
 CHECKSUM_HEXDIGITS = 15  # Must be 15 or lower, otherwise SUM() overflows

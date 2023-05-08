@@ -183,7 +183,9 @@ class Concat(ExprNode):
         if len(items) == 1:
             return items[0]
 
-        if self.sep:
+        if self.sep and hasattr(c.dialect, "concat_with_sep"):
+            return c.dialect.concat_with_sep(items, self.sep)
+        elif self.sep:
             items = list(join_iter(f"'{self.sep}'", items))
         return c.dialect.concat(items)
 
