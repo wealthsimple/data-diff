@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 from typing import Dict, Iterable, List, Sequence
@@ -5,6 +6,7 @@ from urllib.parse import urlparse
 import operator
 import threading
 from datetime import datetime
+from tabulate import tabulate
 
 
 def safezip(*args):
@@ -134,3 +136,43 @@ class Vector(tuple):
 
     def __repr__(self) -> str:
         return "(%s)" % ", ".join(str(k) for k in self)
+
+
+def dbt_diff_string_template(
+    rows_added: str, rows_removed: str, rows_updated: str, rows_unchanged: str, extra_info_dict: Dict, extra_info_str
+) -> str:
+    string_output = f"\n{tabulate([[rows_added, rows_removed]], headers=['Rows Added', 'Rows Removed'])}"
+
+    string_output += f"\n\nUpdated Rows: {rows_updated}\n"
+    string_output += f"Unchanged Rows: {rows_unchanged}\n\n"
+
+    string_output += extra_info_str
+
+    for k, v in extra_info_dict.items():
+        string_output += f"\n{k}: {v}"
+
+    return string_output
+
+
+def _jsons_equiv(a: str, b: str):
+    try:
+        return json.loads(a) == json.loads(b)
+    except (ValueError, TypeError, json.decoder.JSONDecodeError):  # not valid jsons
+        return False
+
+
+def diffs_are_equiv_jsons(diff: list, json_cols: dict):
+    overriden_diff_cols = set()
+    if (len(diff) != 2) or ({diff[0][0], diff[1][0]} != {'+', '-'}):
+        return False, overriden_diff_cols
+    match = True
+    for i, (col_a, col_b) in enumerate(safezip(diff[0][1][1:], diff[1][1][1:])):  # index 0 is extra_columns first elem
+        # we only attempt to parse columns of JSON type, but we still need to check if non-json columns don't match
+        match = col_a == col_b
+        if not match and (i in json_cols):
+            if _jsons_equiv(col_a, col_b):
+                overriden_diff_cols.add(json_cols[i])
+                match = True
+        if not match:
+            break
+    return match, overriden_diff_cols

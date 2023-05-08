@@ -8,12 +8,12 @@ from itertools import product
 from runtype import dataclass
 
 from .utils import safezip, Vector, split_space
-from sqeleton.utils import ArithString
-from sqeleton.databases import Database, DbPath, DbKey, DbTime
-from sqeleton.schema import Schema, create_schema
-from sqeleton.queries import Count, Checksum, SKIP, table, this, Expr, min_, max_, Code, Compiler
-from sqeleton.queries.extras import ApplyFuncAndNormalizeAsString, NormalizeAsString
-from sqeleton.abcs import database_types as DB_TYPES
+from data_diff.sqeleton.utils import ArithString
+from data_diff.sqeleton.databases import Database, DbPath, DbKey, DbTime
+from data_diff.sqeleton.schema import Schema, create_schema
+from data_diff.sqeleton.queries import Count, Checksum, SKIP, table, this, Expr, min_, max_, Code, Compiler
+from data_diff.sqeleton.queries.extras import ApplyFuncAndNormalizeAsString, NormalizeAsString
+from data_diff.sqeleton.abcs import database_types as DB_TYPES
 
 
 LOG_FORMAT = "[%(db)s] %(message)s"

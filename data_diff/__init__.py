@@ -1,7 +1,7 @@
 import logging
 from typing import Sequence, Tuple, Iterator, Optional, Union
 
-from sqeleton.abcs import DbTime, DbPath
+from data_diff.sqeleton.abcs import DbTime, DbPath
 
 from .tracking import disable_tracking
 from .databases import connect
