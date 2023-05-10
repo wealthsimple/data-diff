@@ -9,11 +9,11 @@ from operator import attrgetter, methodcaller
 
 from runtype import dataclass
 
-from sqeleton.abcs import ColType_UUID, NumericType, PrecisionType, StringType, Boolean, IKey
-from sqeleton.databases import DbTime
+from data_diff.sqeleton.abcs import ColType_UUID, NumericType, PrecisionType, StringType, Boolean, IKey, JSON
+from data_diff.sqeleton.databases import DbTime
 
 from .info_tree import InfoTree
-from .utils import safezip
+from .utils import safezip, diffs_are_equiv_jsons
 from .thread_utils import ThreadedYielder
 from .table_segment import TableSegment
 
@@ -27,7 +27,7 @@ DEFAULT_BISECTION_FACTOR = 32
 logger = logging.getLogger("hashdiff_tables")
 
 
-def diff_sets(a: set, b: set, key_indices: list = None) -> Iterator:
+def diff_sets(a: list, b: list, key_indices: list = None, json_cols: dict = None) -> Iterator:
     sa = set(a)
     sb = set(b)
 
@@ -44,8 +44,18 @@ def diff_sets(a: set, b: set, key_indices: list = None) -> Iterator:
         key = tuple(row[idx] for idx in key_indices)
         if row not in sa:
             d[key].append(("+", row))
-    
+
+    warned_diff_cols = set()
     for _k, v in sorted(d.items(), key=lambda i: i[0]):
+        if json_cols:
+            parsed_match, overriden_diff_cols = diffs_are_equiv_jsons(v, json_cols)
+            if parsed_match:
+                to_warn = overriden_diff_cols - warned_diff_cols
+                for w in to_warn:
+                    logger.warning(f"Equivalent JSON objects with different string representations detected "
+                                   f"in column '{w}'. These cases are NOT reported as differences.")
+                    warned_diff_cols.add(w)
+                continue
         yield from v
 
 
@@ -261,7 +271,9 @@ class HashDiffer(TableDiffer):
             self.set_query_timeouts([table1, table2])
 
             rows1, rows2 = self._threaded_call("get_values", [table1, table2])
-            diff = list(diff_sets(rows1, rows2, table1.key_indices))
+            json_cols = {i: colname for i, colname in enumerate(table1.extra_columns)
+                if isinstance(table1._schema[colname], JSON)}
+            diff = list(diff_sets(rows1, rows2, table1.key_indices, json_cols))
 
             diff = self._remove_diffs_outside_update_range(diff, table1, table2)
 
@@ -362,7 +374,10 @@ class GroupingHashDiffer(HashDiffer):
             rows1, rows2 = self._threaded_call("get_values", [table1, table2])
             logging.info(f'rows1: {len(rows1)}')
             logging.info(f'rows2: {len(rows2)}')
-            diff = list(diff_sets(rows1, rows2, table1.key_indices))
+
+            json_cols = {i: colname for i, colname in enumerate(table1.extra_columns)
+                if isinstance(table1._schema[colname], JSON)}
+            diff = list(diff_sets(rows1, rows2, table1.key_indices, json_cols))
 
             diff = self._remove_diffs_outside_update_range(diff, table1, table2)
 
@@ -579,9 +594,10 @@ class TsGroupingHashDiffer(GroupingHashDiffer):
         if max_rows and (max_rows < self.bisection_threshold or max_rows < self.bisection_factor * 2):
             self.set_query_timeouts([table1, table2])
             rows1, rows2 = self._threaded_call("get_values", [table1, table2])
-            logging.info(f'rows1: {len(rows1)}')
-            logging.info(f'rows2: {len(rows2)}')
-            diff = list(diff_sets(rows1, rows2, table1.key_indices))
+
+            json_cols = {i: colname for i, colname in enumerate(table1.extra_columns)
+                if isinstance(table1._schema[colname], JSON)}
+            diff = list(diff_sets(rows1, rows2, table1.key_indices, json_cols))
 
             diff = self._remove_diffs_outside_update_range(diff, table1, table2)
 

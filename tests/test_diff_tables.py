@@ -5,8 +5,8 @@ from typing import Callable
 import uuid
 import unittest
 
-from sqeleton.queries import table, this, commit, code
-from sqeleton.utils import ArithAlphanumeric, numberToAlphanum
+from data_diff.sqeleton.queries import table, this, commit, code
+from data_diff.sqeleton.utils import ArithAlphanumeric, numberToAlphanum
 
 from data_diff.hashdiff_tables import HashDiffer, SinglePassHashDiffer
 from data_diff.joindiff_tables import JoinDiffer
@@ -554,7 +554,6 @@ class TestAlphanumericKeys(DiffTestCase):
         self.b = table_segment(self.connection, self.table_dst_path, "id", "text_comment", case_sensitive=False)
 
     def test_alphanum_keys(self):
-
         differ = HashDiffer(bisection_factor=2, bisection_threshold=3)
         diff = list(differ.diff_tables(self.a, self.b))
         self.assertEqual(diff, [("-", (str(self.new_alphanum), "This one is different"))])
