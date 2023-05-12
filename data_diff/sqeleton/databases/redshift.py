@@ -1,5 +1,5 @@
 from typing import List, Dict
-from sqeleton.utils import join_iter
+from data_diff.sqeleton.utils import join_iter
 from ..abcs.database_types import (
     Float,
     JSON,
