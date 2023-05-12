@@ -590,8 +590,10 @@ class TsGroupingHashDiffer(GroupingHashDiffer):
         # NOTE: Instead of using max_space_size for 2nd comparison, using max_rows since its the ACTUAL count of rows
         #       as retreived from the last query. This especially important when dealing with a composite PK table 
         #       because the approximate_size is likely a gross underestimation.
-        # TODO: if level > last grain index, we can't do any more bisections
-        if max_rows and (max_rows < self.bisection_threshold or max_rows < self.bisection_factor * 2):
+        # if level > last grain index, we can't do any more bisections
+        if (max_rows and (max_rows < self.bisection_threshold or max_rows < self.bisection_factor * 2)) or \
+            (level >= len(table1.group_grains)):
+            logger.info(f"Downloading rows path={seg_path} (max_rows={max_rows}, level={level})")
             self.set_query_timeouts([table1, table2])
             rows1, rows2 = self._threaded_call("get_values", [table1, table2])
 
