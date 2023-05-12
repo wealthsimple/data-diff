@@ -309,6 +309,12 @@ class TableSegment:
 
     @property
     def relevant_columns(self) -> List[str]:
+        ### Column order ###
+        # - key columns (1 or more). If true_key_columns is set, use that instead
+        # - group_by column (if exists)
+        # - update_column (if exists)
+        # - extra columns
+
         extras = list(self.extra_columns)
         key_cols = self.true_key_columns or list(self.key_columns)
 
@@ -331,9 +337,15 @@ class TableSegment:
     def update_col_idx(self) -> int:
         if not self.update_column:
             raise ValueError(f'No update_column specified for table {self.table_path}')
-        # key columns are first, so next index is the update_column
+        
+        ### Column order ###
+        # - key columns (1 or more). If true_key_columns is set, use that instead
+        # - group_by column (if exists)
+        # - update_column (if exists)
+        # - extra columns
         key_cols = self.true_key_columns or list(self.key_columns)
-        return len(key_cols)
+        group_col_offset = 1 if self.group_by_column else 0
+        return len(key_cols) + group_col_offset
     
     def col_conversion(self, c: str) -> tuple[Optional[str], Optional[list]]:
         c_type = self._schema[c].__class__.__name__
