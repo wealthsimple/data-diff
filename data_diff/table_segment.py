@@ -164,6 +164,7 @@ class TableSegment:
     max_update: DbTime = None
     where: str = None
     optimizer_hints: str = None
+    opt_hints_depth: int = 4
 
     # group_by column
     group_by_column: str = None 
@@ -309,6 +310,12 @@ class TableSegment:
 
     @property
     def relevant_columns(self) -> List[str]:
+        ### Column order ###
+        # - key columns (1 or more). If true_key_columns is set, use that instead
+        # - group_by column (if exists)
+        # - update_column (if exists)
+        # - extra columns
+
         extras = list(self.extra_columns)
         key_cols = self.true_key_columns or list(self.key_columns)
 
@@ -331,9 +338,15 @@ class TableSegment:
     def update_col_idx(self) -> int:
         if not self.update_column:
             raise ValueError(f'No update_column specified for table {self.table_path}')
-        # key columns are first, so next index is the update_column
+        
+        ### Column order ###
+        # - key columns (1 or more). If true_key_columns is set, use that instead
+        # - group_by column (if exists)
+        # - update_column (if exists)
+        # - extra columns
         key_cols = self.true_key_columns or list(self.key_columns)
-        return len(key_cols)
+        group_col_offset = 1 if self.group_by_column else 0
+        return len(key_cols) + group_col_offset
     
     def col_conversion(self, c: str) -> tuple[Optional[str], Optional[list]]:
         c_type = self._schema[c].__class__.__name__
@@ -413,7 +426,7 @@ class TableSegment:
         group_by_expr = f'FLOOR(({group_by_col} - {min_key})/{div_factor})'
 
         maybe_optimizer_hints = \
-            {'optimizer_hints': self.optimizer_hints} if level == 0 else {}
+            {'optimizer_hints': self.optimizer_hints} if level < self.opt_hints_depth else {}
 
         q = (self.make_select()
             .select(
@@ -504,7 +517,7 @@ class TableSegment:
             raise NotImplementedError(f'Unsupported database for checksum by TS group: {self.database.name}')
 
         maybe_optimizer_hints = \
-            {'optimizer_hints': self.optimizer_hints} if level == 0 else {}
+            {'optimizer_hints': self.optimizer_hints} if level < self.opt_hints_depth else {}
 
         q = (self.make_select(use_max_update=True)
             .select(
