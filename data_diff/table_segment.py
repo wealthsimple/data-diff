@@ -164,6 +164,7 @@ class TableSegment:
     max_update: DbTime = None
     where: str = None
     optimizer_hints: str = None
+    opt_hints_depth: int = 4
 
     # group_by column
     group_by_column: str = None 
@@ -425,7 +426,7 @@ class TableSegment:
         group_by_expr = f'FLOOR(({group_by_col} - {min_key})/{div_factor})'
 
         maybe_optimizer_hints = \
-            {'optimizer_hints': self.optimizer_hints} if level == 0 else {}
+            {'optimizer_hints': self.optimizer_hints} if level < self.opt_hints_depth else {}
 
         q = (self.make_select()
             .select(
@@ -516,7 +517,7 @@ class TableSegment:
             raise NotImplementedError(f'Unsupported database for checksum by TS group: {self.database.name}')
 
         maybe_optimizer_hints = \
-            {'optimizer_hints': self.optimizer_hints} if level == 0 else {}
+            {'optimizer_hints': self.optimizer_hints} if level < self.opt_hints_depth else {}
 
         q = (self.make_select(use_max_update=True)
             .select(
