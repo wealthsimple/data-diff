@@ -635,7 +635,7 @@ class TsGroupingHashDiffer(GroupingHashDiffer):
         self.set_query_timeouts([table1, table2])
 
         # wait for all queries to complete.
-        all_results = ti._submit_and_block(*query_fns, priority=level)
+        all_results = self._threaded_call('count_and_checksum_by_ts_group', [table1, table2], level=level)
 
         table1_res = all_results[0]
         table2_res = all_results[1]
