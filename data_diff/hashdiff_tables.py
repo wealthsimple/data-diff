@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import partial
 import os
 from numbers import Number
@@ -677,17 +677,32 @@ class TsGroupingHashDiffer(GroupingHashDiffer):
             if isinstance(dt, str):
                 return datetime.strptime(dt, '%Y-%m-%d %H:%M:%S')
             return dt
+        
+        def add_group_grain(dt, table) -> DbTime:
+            time_deltas = {
+                'year': timedelta(days=365),
+                'month': timedelta(days=31),
+                'day': timedelta(days=1),
+                'hour': timedelta(hours=1),
+                'minute': timedelta(minutes=1),
+                'second': timedelta(seconds=1),
+            }
+
+            # add 1 <time_grain> to group_min to calculate group_max
+            return dt + time_deltas[table.group_grains[level]]
 
         segmented1, segmented2 = [], []
         # create TableSegments from each result row
         if len(table1_res) >= 1:
             segmented1 = [table1.new(group_min=str_to_dt(r[0]), 
-                                     group_max=str_to_dt(table1_res[idx+1][0])) for idx, r in enumerate(table1_res[:-1])]
-            segmented1.append(table1.new(group_min=str_to_dt(table1_res[-1][0]), group_max=str_to_dt(table1.group_max)))
+                                     group_max=str_to_dt(table1_res[idx+1][0])) for idx, r in enumerate(table1_res[:-1])]   
+            group_max1 = table1.group_max or add_group_grain(str_to_dt(table1_res[-1][0]), table1)
+            segmented1.append(table1.new(group_min=str_to_dt(table1_res[-1][0]), group_max=group_max1))
 
             segmented2 = [table2.new(group_min=str_to_dt(r[0]), 
                                      group_max=str_to_dt(table2_res[idx+1][0])) for idx, r in enumerate(table2_res[:-1])]
-            segmented2.append(table2.new(group_min=str_to_dt(table2_res[-1][0]), group_max=str_to_dt(table2.group_max)))
+            group_max2 = table2.group_max or add_group_grain(str_to_dt(table2_res[-1][0]), table2)
+            segmented2.append(table2.new(group_min=str_to_dt(table2_res[-1][0]), group_max=group_max2))
 
         # compare results for each segment in parallel
         for idx, (res1, res2, seg1, seg2) in enumerate(zip(table1_res, table2_res, segmented1, segmented2)):
