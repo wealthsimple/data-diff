@@ -139,13 +139,7 @@ class TableSegment:
 
         true_key_columns (list[str]): Hack for GroupingHashDiffer to be able to properly sort diff results 
                                 of tables with composite keys. Temporary until we properly support group_by_col.
-                                If ``None``, key_column is used (which is equivalent to [0]).
-                                ex. [0, 2, 3]  --> 3-col composite PK.
-                                0 - first one should always be 0 (corresponds to the key_column)
-                                2 - The 2nd column in the 'extras' list (TableSegment.relevant_columns)
-                                        Might want to skip 1 since it will be the update_column if it exists
-                                3 - 3rd column in the extras list 
-
+                                If ``None``, key_columns is used.
     """
 
     # Location of table
@@ -169,7 +163,6 @@ class TableSegment:
     # group_by column
     group_by_column: str = None 
     hash_query_type: str = 'multi'
-    true_key_indices: list = None # TODO: remove on next PR
     group_min: Any = None
     group_max: Any = None
     group_grains: list = ['month', 'day', 'minute', 'second']
@@ -307,30 +300,58 @@ class TableSegment:
             assert max_key <= self.max_key, (max_key, self.max_key)
 
         return self.replace(min_key=min_key, max_key=max_key)
+    
+    def case_insensitive_idx(self, list_strs, target):
+        if target is None:
+            return -1
+        
+        target_string_lower = target.lower()
+        for idx, item in enumerate(list_strs):
+            if item.lower() == target_string_lower:
+                return idx
+        return -1
 
     @property
     def relevant_columns(self) -> List[str]:
         ### Column order ###
-        # - key columns (1 or more). If true_key_columns is set, use that instead
+        # - key columns (1 or more). If true_key_columns set, use de-duped combo of true_key_columns + key_columns
         # - group_by column (if exists)
         # - update_column (if exists)
         # - extra columns
 
         extras = list(self.extra_columns)
-        key_cols = self.true_key_columns or list(self.key_columns)
 
-        if self.update_column and self.update_column not in extras \
-            and self.update_column not in key_cols:
-            extras = [self.update_column] + extras
-
-        if self.group_by_column and self.group_by_column not in extras \
-            and self.group_by_column not in key_cols:
-            extras = [self.group_by_column] + extras
-
-        # handle case where true_key_columns doesn't contain all key_columns
         if self.true_key_columns:
-            key_extras = [c for c in self.key_columns if c not in extras]
-            extras = extras + key_extras
+            key_cols = list(set([c.lower() for c in self.true_key_columns + list(self.key_columns)]))
+        else:
+            key_cols = [c.lower() for c in self.key_columns]
+
+        if self.update_column:
+            # make sure update_column isn't duplicated in extras or key columns
+            update_col_idx_in_keys = self.case_insensitive_idx(key_cols, self.update_column)
+            update_col_idx_in_extras = self.case_insensitive_idx(extras, self.update_column)
+
+            if update_col_idx_in_extras >= 0:
+                # remove from curr location (we'll end up with it in correct position in extras (front))
+                extras.pop(update_col_idx_in_extras)
+
+            if update_col_idx_in_keys == -1:
+                # as long as its not already in key columns, add to front of extras
+                extras = [self.update_column] + extras
+
+        if self.group_by_column:
+            # make sure group_by_column isn't duplicated in extras or key columns
+            group_by_col_idx_in_keys = self.case_insensitive_idx(key_cols, self.group_by_column)
+            group_by_col_idx_in_extras = self.case_insensitive_idx(extras, self.group_by_column)
+            
+            if group_by_col_idx_in_extras >= 0:
+                # remove from curr location (we'll end up with it in correct position in extras (front))
+                extras.pop(group_by_col_idx_in_extras)
+
+            if group_by_col_idx_in_keys == -1:
+                # as long as its not already in key columns, add to front of extras
+                extras = [self.group_by_column] + extras
+
 
         return list(key_cols) + extras
     
@@ -379,7 +400,7 @@ class TableSegment:
     @property
     def key_indices(self) -> Tuple[str]:
         key_cols = self.true_key_columns or self.key_columns
-        return [self.relevant_columns.index(c) for c in key_cols]
+        return [self.relevant_columns.index(c.lower()) for c in key_cols]
 
     def count(self) -> int:
         """Count how many rows are in the segment, in one pass."""
