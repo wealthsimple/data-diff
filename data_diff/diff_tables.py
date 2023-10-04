@@ -56,9 +56,9 @@ class ThreadBase:
             # return task_pool.map(func, iterable, timeout=timeout)
             return task_pool.map(func, iterable)
 
-    def _threaded_call(self, func, iterable):
+    def _threaded_call(self, func, iterable, *args, **kwargs):
         "Calls a method for each object in iterable."
-        return list(self._thread_map(methodcaller(func), iterable))
+        return list(self._thread_map(methodcaller(func, *args, **kwargs), iterable))
 
     def _thread_as_completed(self, func, iterable):
         if not self.threaded:

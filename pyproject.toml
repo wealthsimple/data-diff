@@ -1,11 +1,11 @@
 [tool.poetry]
-name = "data-diff"
-version = "0.7.5"
+name = "data-diff-ws"
+version = "0.7.98"
 description = "Command-line tool and Python library to efficiently diff rows across two different databases."
 authors = ["Datafold <data-diff@datafold.com>"]
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/datafold/data-diff"
+repository = "https://github.com/wealthsimple/data-diff"
 documentation = ""
 classifiers = [
     "Intended Audience :: Developers",
