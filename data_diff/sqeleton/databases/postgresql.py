@@ -1,5 +1,4 @@
 from typing import List
-from ..utils import match_regexps
 from ..abcs.database_types import (
     DbPath,
     JSON,
@@ -82,7 +81,6 @@ class PostgresqlDialect(BaseDialect, Mixin_Schema):
         "character varying": Text,
         "varchar": Text,
         "text": Text,
-
         "json": JSON,
         "jsonb": JSON,
         "uuid": Native_UUID,
@@ -94,6 +92,10 @@ class PostgresqlDialect(BaseDialect, Mixin_Schema):
 
     def to_string(self, s: str):
         return f"{s}::varchar"
+
+    def concat(self, items: List[str]) -> str:
+        joined_exprs = " || ".join(items)
+        return f"({joined_exprs})"
 
     def _convert_db_precision_to_digits(self, p: int) -> int:
         # Subtracting 2 due to wierd precision issues in PostgreSQL

@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional, Type, TypeVar, Tuple
 import pydantic
 import requests
 
+from data_diff.errors import DataDiffCloudDiffFailed, DataDiffCloudDiffTimedOut, DataDiffDatasourceIdNotFoundError
+
 from ..utils import getLogger
 
 logger = getLogger(__name__)
@@ -103,6 +105,14 @@ class TCloudApiDataDiff(pydantic.BaseModel):
     pk_columns: List[str]
     filter1: Optional[str] = None
     filter2: Optional[str] = None
+    include_columns: Optional[List[str]]
+    exclude_columns: Optional[List[str]]
+
+
+class TCloudApiOrgMeta(pydantic.BaseModel):
+    org_id: int
+    org_name: str
+    user_id: int
 
 
 class TSummaryResultPrimaryKeyStats(pydantic.BaseModel):
@@ -132,6 +142,8 @@ class TSummaryResultSchemaStats(pydantic.BaseModel):
     column_type_mismatches: int
     column_reorders: int
     column_counts: Tuple[int, int]
+    column_type_differs: List[str]
+    exclusive_columns: Tuple[List[str], List[str]]
 
 
 class TCloudApiDataDiffSummaryResult(pydantic.BaseModel):
@@ -196,6 +208,17 @@ class DatafoldAPI:
         rv.raise_for_status()
         return [TCloudApiDataSource(**item) for item in rv.json()]
 
+    def get_data_source(self, data_source_id: int) -> TCloudApiDataSource:
+        rv = self.make_get_request(url=f"api/v1/data_sources")
+        rv.raise_for_status()
+        response_json = rv.json()
+        datasource = next((datasource for datasource in response_json if datasource["id"] == data_source_id), None)
+        if not datasource:
+            raise DataDiffDatasourceIdNotFoundError(
+                f"Datasource ID: {data_source_id} was not found in your Datafold account!"
+            )
+        return TCloudApiDataSource(**datasource)
+
     def create_data_source(self, config: TDsConfig) -> TCloudApiDataSource:
         payload = config.dict()
         if config.type == "bigquery":
@@ -225,25 +248,27 @@ class DatafoldAPI:
     def poll_data_diff_results(self, diff_id: int) -> TCloudApiDataDiffSummaryResult:
         summary_results = None
         start_time = time.monotonic()
-        sleep_interval = 5  # starts at 5 sec
-        max_sleep_interval = 30
+        sleep_interval = 3
+        max_sleep_interval = 20
         max_wait_time = 300
 
         diff_url = f"{self.host}/datadiffs/{diff_id}/overview"
         while not summary_results:
-            logger.debug(f"Polling: {diff_url}")
+            logger.debug("Polling Datafold for results...")
             response = self.make_get_request(url=f"api/v1/datadiffs/{diff_id}/summary_results")
             response_json = response.json()
             if response_json["status"] == "success":
                 summary_results = response_json
             elif response_json["status"] == "failed":
-                raise Exception(f"Diff failed: {str(response_json)}")
+                raise DataDiffCloudDiffFailed(f"Diff failed: {str(response_json)}")
 
             if time.monotonic() - start_time > max_wait_time:
-                raise Exception(f"Timed out waiting for diff results. Please, go to the UI for details: {diff_url}")
+                raise DataDiffCloudDiffTimedOut(
+                    f"Timed out waiting for diff results. Please, go to the UI for details: {diff_url}"
+                )
 
             time.sleep(sleep_interval)
-            sleep_interval = min(sleep_interval * 2, max_sleep_interval)
+            sleep_interval = min(sleep_interval + 1, max_sleep_interval)
 
         return TCloudApiDataDiffSummaryResult.from_orm(summary_results)
 
@@ -267,3 +292,10 @@ class DatafoldAPI:
             )
             for item in rv.json()["results"]
         ]
+
+    def get_org_meta(self) -> TCloudApiOrgMeta:
+        response = self.make_get_request(f"api/v1/organization/meta")
+        response_json = response.json()
+        return TCloudApiOrgMeta(
+            org_id=response_json["org_id"], org_name=response_json["org_name"], user_id=response_json["user_id"]
+        )

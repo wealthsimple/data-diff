@@ -1,20 +1,22 @@
 from copy import deepcopy
 from datetime import datetime
+import os
 import sys
 import time
 import json
 import logging
 from itertools import islice
-from typing import Optional
+from typing import Dict, Optional
 
 import rich
+from rich.logging import RichHandler
 import click
 
 from data_diff.sqeleton.schema import create_schema
 from data_diff.sqeleton.queries.api import current_timestamp
 
 from .dbt import dbt_diff
-from .utils import eval_name_template, remove_password_from_url, safezip, match_like
+from .utils import eval_name_template, remove_password_from_url, safezip, match_like, LogStatusHandler
 from .diff_tables import Algorithm
 from .hashdiff_tables import HashDiffer, DEFAULT_BISECTION_THRESHOLD, DEFAULT_BISECTION_FACTOR
 from .joindiff_tables import TABLE_WRITE_LIMIT, JoinDiffer
@@ -26,15 +28,34 @@ from .tracking import disable_tracking, set_entrypoint_name
 from .version import __version__
 
 
-LOG_FORMAT = "[%(asctime)s] %(levelname)s - %(message)s"
-DATE_FORMAT = "%H:%M:%S"
-
 COLOR_SCHEME = {
     "+": "green",
     "-": "red",
 }
 
-set_entrypoint_name("CLI")
+set_entrypoint_name(os.getenv("DATAFOLD_TRIGGERED_BY", "CLI"))
+
+
+def _get_log_handlers(is_dbt: Optional[bool] = False) -> Dict[str, logging.Handler]:
+    handlers = {}
+    date_format = "%H:%M:%S"
+    log_format_rich = "%(message)s"
+
+    # limits to 100 characters arbitrarily
+    log_format_status = "%(message).100s"
+    rich_handler = RichHandler(rich_tracebacks=True)
+    rich_handler.setFormatter(logging.Formatter(log_format_rich, datefmt=date_format))
+    rich_handler.setLevel(logging.WARN)
+    handlers["rich_handler"] = rich_handler
+
+    # only use log_status_handler in an interactive terminal session
+    if rich_handler.console.is_interactive and is_dbt:
+        log_status_handler = LogStatusHandler()
+        log_status_handler.setFormatter(logging.Formatter(log_format_status, datefmt=date_format))
+        log_status_handler.setLevel(logging.DEBUG)
+        handlers["log_status_handler"] = log_status_handler
+
+    return handlers
 
 
 def _remove_passwords_in_dict(d: dict):
@@ -232,10 +253,18 @@ click.Context.formatter_class = MyHelpFormatter
     "--select",
     "-s",
     default=None,
+    metavar="SELECTION or MODEL_NAME",
+    help="--select dbt resources to compare using dbt selection syntax in dbt versions >= 1.5.\nIn versions < 1.5, it will naively search for a model with MODEL_NAME as the name.",
+)
+@click.option(
+    "--state",
+    "-s",
+    default=None,
     metavar="PATH",
-    help="select dbt resources to compare using dbt selection syntax",
+    help="Specify manifest to utilize for 'prod' comparison paths instead of using configuration.",
 )
 def main(conf, run, **kw):
+    log_handlers = _get_log_handlers(kw["dbt"])
     if kw["table2"] is None and kw["database2"]:
         # Use the "database table table" form
         kw["table2"] = kw["database2"]
@@ -255,26 +284,46 @@ def main(conf, run, **kw):
         kw["debug"] = True
 
     if kw["debug"]:
-        logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT, datefmt=DATE_FORMAT)
+        log_handlers["rich_handler"].setLevel(logging.DEBUG)
+        logging.basicConfig(level=logging.DEBUG, handlers=list(log_handlers.values()))
         if kw.get("__conf__"):
             kw["__conf__"] = deepcopy(kw["__conf__"])
             _remove_passwords_in_dict(kw["__conf__"])
             logging.debug(f"Applied run configuration: {kw['__conf__']}")
     elif kw.get("verbose"):
-        logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, datefmt=DATE_FORMAT)
+        log_handlers["rich_handler"].setLevel(logging.INFO)
+        logging.basicConfig(level=logging.DEBUG, handlers=list(log_handlers.values()))
     else:
-        logging.basicConfig(level=logging.WARNING, format=LOG_FORMAT, datefmt=DATE_FORMAT)
+        log_handlers["rich_handler"].setLevel(logging.WARNING)
+        logging.basicConfig(level=logging.DEBUG, handlers=list(log_handlers.values()))
 
     try:
+        state = kw.pop("state", None)
+        if state:
+            state = os.path.expanduser(state)
+        profiles_dir_override = kw.pop("dbt_profiles_dir", None)
+        if profiles_dir_override:
+            profiles_dir_override = os.path.expanduser(profiles_dir_override)
+        project_dir_override = kw.pop("dbt_project_dir", None)
+        if project_dir_override:
+            project_dir_override = os.path.expanduser(project_dir_override)
         if kw["dbt"]:
             dbt_diff(
-                profiles_dir_override=kw["dbt_profiles_dir"],
-                project_dir_override=kw["dbt_project_dir"],
+                log_status_handler=log_handlers.get("log_status_handler"),
+                profiles_dir_override=profiles_dir_override,
+                project_dir_override=project_dir_override,
                 is_cloud=kw["cloud"],
                 dbt_selection=kw["select"],
+                json_output=kw["json_output"],
+                state=state,
+                where_flag=kw["where"],
+                stats_flag=kw["stats"],
+                columns_flag=kw["columns"],
             )
         else:
-            return _data_diff(**kw)
+            return _data_diff(
+                dbt_project_dir=project_dir_override, dbt_profiles_dir=profiles_dir_override, state=state, **kw
+            )
     except Exception as e:
         logging.error(e)
         if kw["debug"]:
@@ -315,6 +364,7 @@ def _data_diff(
     dbt_profiles_dir,
     dbt_project_dir,
     select,
+    state,
     threads1=None,
     threads2=None,
     __conf__=None,

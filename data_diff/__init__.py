@@ -86,7 +86,10 @@ def diff_tables(
     optimizer_hints: Optional[str] = None,
 
     # 8-hour timeout by default
-    timeout: int = 8*60*60
+    timeout: int = 8*60*60,
+
+    # Skips diffing any rows with null keys. (joindiff only)
+    skip_null_keys: bool = False,
 ) -> tuple[TableDiffer, Iterator]:
     """Finds the diff between table1 and table2.
 
@@ -117,6 +120,7 @@ def diff_tables(
         table_write_limit (int): Maximum number of rows to write when materializing, per thread.
         hash_query_type (str): multi, or grouped
         optimizer_hints (Optional[str]): optimizer hints for SELECT queries
+        skip_null_keys (bool): Skips diffing any rows with null PKs (displays a warning if any are null) (used for `JOINDIFF`. default: False)
 
     Note:
         The following parameters are used to override the corresponding attributes of the given :class:`TableSegment` instances:
@@ -202,7 +206,8 @@ def diff_tables(
             materialize_to_table=materialize_to_table,
             materialize_all_rows=materialize_all_rows,
             table_write_limit=table_write_limit,
-            timeout=timeout
+            timeout=timeout,
+            skip_null_keys=skip_null_keys,
         )
     else:
         raise ValueError(f"Unknown algorithm: {algorithm}")

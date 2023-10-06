@@ -1,91 +1,135 @@
 <p align="center">
-    <img alt="Datafold" src="https://user-images.githubusercontent.com/1799931/196497110-d3de1113-a97f-4322-b531-026d859b867a.png" width="50%" />
+    <a href="https://datafold.com/"><img alt="Datafold" src="https://user-images.githubusercontent.com/1799931/196497110-d3de1113-a97f-4322-b531-026d859b867a.png" width="30%" /></a>
 </p>
 
-<h1 align="center">
-data-diff
-</h1>
-
 <h2 align="center">
-Develop dbt models faster by testing as you code.
+data-diff: Compare datasets fast, within or across SQL databases
+
+![data-diff-logo](docs/data-diff-logo.png)
 </h2>
-<h4 align="center">
-See how every change to dbt code affects the data produced in the modified model and downstream.
-</h4>
 <br>
 
-## What is `data-diff`?
+# Use Cases
 
-data-diff is an open source package that you can use to see the impact of your dbt code changes on your dbt models as you code.
+## Data Migration & Replication Testing
+Compare source to target and check for discrepancies when moving data between systems:
+- Migrating to a new data warehouse (e.g., Oracle > Snowflake)
+- Converting SQL to a new transformation framework (e.g., stored procedures > dbt)
+- Continuously replicating data from an OLTP DB to OLAP DWH (e.g., MySQL > Redshift)
 
-<div align="center">
 
-![development_testing_gif](https://user-images.githubusercontent.com/1799931/236354286-d1d044cf-2168-4128-8a21-8c8ca7fd494c.gif)
+## Data Development Testing
+Test SQL code and preview changes by comparing development/staging environment data to production:
+1. Make a change to some SQL code
+2. Run the SQL code to create a new dataset
+3. Compare the dataset with its production version or another iteration
 
-</div>
+  <p align="left">
+  <img alt="dbt" src="https://seeklogo.com/images/D/dbt-logo-E4B0ED72A2-seeklogo.com.png" width="10%" />
+  </p>
 
-<br>
+<details>
+<summary> data-diff integrates with dbt Core to seamlessly compare local development to production datasets
 
-## Getting Started
+ </summary>
 
-**Install `data-diff`**
+![data-development-testing](docs/development_testing.png)
 
-Install `data-diff` with the command that is specific to the database you use with dbt.
+</details>
 
-### Snowflake
+> [dbt Cloud users should check out Datafold's out-of-the-box deployment testing integration](https://www.datafold.com/data-deployment-testing)
+
+:eyes: **Watch [4-min demo video](https://www.loom.com/share/ad3df969ba6b4298939efb2fbcc14cde)**
+
+**[Get started with data-diff & dbt](https://docs.datafold.com/development_testing/open_source)**
+
+Also available in a [VS Code Extension](https://marketplace.visualstudio.com/items?itemName=Datafold.datafold-vscode)
+
+Reach out on the dbt Slack in [#tools-datafold](https://getdbt.slack.com/archives/C03D25A92UU) for advice and support
+
+
+# How it works
+
+When comparing the data, `data-diff` utilizes the resources of the underlying databases as much as possible. It has two primary modes of comparison:
+
+## `joindiff`
+- Recommended for comparing data within the same database
+- Uses the outer join operation to diff the rows as efficiently as possible within the same database
+- Fully relies on the underlying database engine for computation
+- Requires both datasets to be queryable with a single SQL query
+- Time complexity approximates JOIN operation and is largely independent of the number of differences in the dataset
+
+## `hashdiff`
+- Recommended for comparing datasets across different databases
+- Can also be helpful in diffing very large tables with few expected differences within the same database
+- Employs a divide-and-conquer algorithm based on hashing and binary search
+- Can diff data across distinct database engines, e.g., PostgreSQL <> Snowflake
+- Time complexity approximates COUNT(*) operation when there are few differences
+- Performance degrades when datasets have a large number of differences
+
+More information about the algorithm and performance considerations can be found [here](https://github.com/datafold/data-diff/blob/master/docs/technical-explanation.md)
+
+# Get started
+
+## Validating dbt model changes between dev and prod
+⚡ Looking to use `data-diff` in dbt development? Head over to [our `data-diff` + `dbt` documentation](https://docs.datafold.com/development_testing/open_source/) to get started!
+
+## Compare data tables between databases
+🔀 To compare data between databases, install `data-diff` with specific database adapters, e.g.:
+
 ```
-pip install data-diff 'data-diff[snowflake,dbt]' -U
+pip install data-diff 'data-diff[postgresql,snowflake]' -U
 ```
 
-### BigQuery
+Run `data-diff` with connection URIs. In the following example, we compare tables between PostgreSQL and Snowflake using hashdiff algorithm:
 ```
-pip install data-diff 'data-diff[dbt]' google-cloud-bigquery -U
-```
-
-### Redshift
-```
-pip install data-diff 'data-diff[redshift,dbt]' -U
-```
-
-### Postgres
-```
-pip install data-diff 'data-diff[postgres,dbt]' -U
+data-diff \
+  postgresql://<username>:'<password>'@localhost:5432/<database> \
+  <table> \
+  "snowflake://<username>:<password>@<password>/<DATABASE>/<SCHEMA>?warehouse=<WAREHOUSE>&role=<ROLE>" \
+  <TABLE> \
+  -k <primary key column> \
+  -c <columns to compare> \
+  -w <filter condition>
 ```
 
-### Databricks
-```
-pip install data-diff 'data-diff[databricks,dbt]' -U
-```
+Check out [documentation](https://docs.datafold.com/reference/open_source/cli) for the full command reference.
 
-### DuckDB
-```
-pip install data-diff 'data-diff[duckdb,dbt]' -U
-```
 
-**Update a few lines in your `dbt_project.yml`**.
-```
-#dbt_project.yml
-vars:
-  data_diff:
-    prod_database: my_database
-    prod_schema: my_default_schema
-```
+# Supported databases
 
-**Run your first data diff!**
 
-```
-dbt run && data-diff --dbt
-```
+| Database      | Status | Connection string                                                                                                                   |
+|---------------|-------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|
+| PostgreSQL >=10 |  🟢   | `postgresql://<user>:<password>@<host>:5432/<database>`                                                                             |
+| MySQL         |  🟢     | `mysql://<user>:<password>@<hostname>:5432/<database>`                                                                              |
+| Snowflake     |  🟢     | `"snowflake://<user>[:<password>]@<account>/<database>/<SCHEMA>?warehouse=<WAREHOUSE>&role=<role>[&authenticator=externalbrowser]"` |
+| BigQuery      |  🟢     | `bigquery://<project>/<dataset>`                                                                                                    |
+| Redshift      |  🟢     | `redshift://<username>:<password>@<hostname>:5439/<database>`                                                                       |
+| Oracle        |  🟡   | `oracle://<username>:<password>@<hostname>/servive_or_sid`                                                                          |
+| Presto        |  🟡   | `presto://<username>:<password>@<hostname>:8080/<database>`                                                                         |
+| Databricks    |  🟡   | `databricks://<http_path>:<access_token>@<server_hostname>/<catalog>/<schema>`                                                      |
+| Trino         |  🟡   | `trino://<username>:<password>@<hostname>:8080/<database>`                                                                          |
+| Clickhouse    |  🟡   | `clickhouse://<username>:<password>@<hostname>:9000/<database>`                                                                     |
+| Vertica       |  🟡   | `vertica://<username>:<password>@<hostname>:5433/<database>`                                                                        |
+| DuckDB        |  🟡   |                                                                                                                                     |
+| ElasticSearch |  📝    |                                                                                                                                     |
+| Planetscale   |  📝    |                                                                                                                                     |
+| Pinot         |  📝    |                                                                                                                                     |
+| Druid         |  📝    |                                                                                                                                     |
+| Kafka         |  📝    |                                                                                                                                     |
+| SQLite        |  📝    |                                                                                                                                     |
 
-We recommend you get started by walking through [our simple setup instructions](https://docs.datafold.com/development_testing/open_source) which contain examples and details.
+* 🟢: Implemented and thoroughly tested.
+* 🟡: Implemented, but not thoroughly tested yet.
+* ⏳: Implementation in progress.
+* 📝: Implementation planned. Contributions welcome.
 
-Please reach out on the dbt Slack in [#tools-datafold](https://getdbt.slack.com/archives/C03D25A92UU) if you have any trouble whatsoever getting started!
+Your database not listed here?
 
-<br><br>
+- Contribute a [new database adapter](https://github.com/datafold/data-diff/blob/master/docs/new-database-driver-guide.rst) – we accept pull requests!
+- [Get in touch](https://www.datafold.com/demo) about enterprise support and adding new adapters and features
 
-### Diffing between databases
-
-Check out our [documentation](https://github.com/datafold/data-diff/blob/master/docs/supported-databases.md) if you're looking to compare data across databases (for example, between Postgres and Snowflake).
 
 <br>
 
