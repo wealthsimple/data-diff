@@ -6,7 +6,7 @@ authors = ["Datafold <data-diff@datafold.com>"]
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/wealthsimple/data-diff"
-documentation = ""
+documentation = "https://github.com/wealthsimple/data-diff/blob/master/README.md"
 classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
