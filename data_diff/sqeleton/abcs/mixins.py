@@ -9,6 +9,7 @@ from .database_types import (
     String_UUID,
     JSON,
     Struct,
+    StringType
 )
 from .compiler import Compilable
 
