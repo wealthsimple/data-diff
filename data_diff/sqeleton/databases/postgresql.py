@@ -17,6 +17,7 @@ from ..abcs.database_types import (
 from ..abcs.mixins import AbstractMixin_MD5, AbstractMixin_NormalizeValue
 from .base import BaseDialect, ThreadedDatabase, import_helper, ConnectError, Mixin_Schema, ColType
 from .base import MD5_HEXDIGITS, CHECKSUM_HEXDIGITS, _CHECKSUM_BITSIZE, TIMESTAMP_PRECISION_POS, Mixin_RandomSample
+from ..utils import match_regexps
 
 SESSION_TIME_ZONE = None  # Changed by the tests
 
