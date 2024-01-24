@@ -69,7 +69,7 @@ class Mixin_NormalizeValue(AbstractMixin_NormalizeValue):
         return f"to_char({value}, '{format_str}')"
 
     def normalize_string(self, value: str, coltype: StringType) -> str:
-        # why did we have to add this? Makes varchar cols with emojis compat with redshift
+        # why did we have to add this? Makes varchar cols with emojis compat with redshift. Hmm but apparently not in all cases.
         return f"cast(CONVERT({value}, 'AL32UTF8') as varchar(1024))"
 
 class Mixin_Schema(AbstractMixin_Schema):
