@@ -6,7 +6,11 @@ from urllib.parse import urlparse
 import operator
 import threading
 from datetime import datetime
+from packaging.version import parse as parse_version
+import requests
 from tabulate import tabulate
+from .version import __version__
+from rich.status import Status
 
 
 def safezip(*args):
@@ -81,10 +85,12 @@ def truncate_error(error: str):
     return re.sub("'(.*?)'", "'***'", first_line)
 
 
-def get_from_dict_with_raise(dictionary: Dict, key: str, error_message: str):
+def get_from_dict_with_raise(dictionary: Dict, key: str, exception: Exception):
+    if dictionary is None:
+        raise exception
     result = dictionary.get(key)
     if result is None:
-        raise ValueError(error_message)
+        raise exception
     return result
 
 def split_space(start, end, count) -> List[int]:
@@ -163,7 +169,7 @@ def _jsons_equiv(a: str, b: str):
 
 def diffs_are_equiv_jsons(diff: list, json_cols: dict):
     overriden_diff_cols = set()
-    if (len(diff) != 2) or ({diff[0][0], diff[1][0]} != {'+', '-'}):
+    if (len(diff) != 2) or ({diff[0][0], diff[1][0]} != {"+", "-"}):
         return False, overriden_diff_cols
     match = True
     for i, (col_a, col_b) in enumerate(safezip(diff[0][1][1:], diff[1][1][1:])):  # index 0 is extra_columns first elem
@@ -176,3 +182,76 @@ def diffs_are_equiv_jsons(diff: list, json_cols: dict):
         if not match:
             break
     return match, overriden_diff_cols
+
+
+def columns_removed_template(columns_removed) -> str:
+    columns_removed_str = f"Column(s) removed: {columns_removed}\n"
+    return columns_removed_str
+
+
+def columns_added_template(columns_added) -> str:
+    columns_added_str = f"Column(s) added: {columns_added}\n"
+    return columns_added_str
+
+
+def columns_type_changed_template(columns_type_changed) -> str:
+    columns_type_changed_str = f"Type change: {columns_type_changed}\n"
+    return columns_type_changed_str
+
+
+def no_differences_template() -> str:
+    return "[bold][green]No row differences[/][/]\n"
+
+
+def print_version_info() -> None:
+    base_version_string = f"Running with data-diff={__version__}"
+    logger = getLogger(__name__)
+    latest_version = None
+    try:
+        response = requests.get(url="https://pypi.org/pypi/data-diff/json", timeout=3)
+        response.raise_for_status()
+        response_json = response.json()
+        latest_version = response_json["info"]["version"]
+    except Exception as ex:
+        logger.debug(f"Failed checking version: {ex}")
+
+    if latest_version and parse_version(__version__) < parse_version(latest_version):
+        print(f"{base_version_string} (Update {latest_version} is available!)")
+    else:
+        print(base_version_string)
+
+
+class LogStatusHandler(logging.Handler):
+    """
+    This log handler can be used to update a rich.status every time a log is emitted.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.status = Status("")
+        self.prefix = ""
+        self.cloud_diff_status = {}
+
+    def emit(self, record):
+        log_entry = self.format(record)
+        if self.cloud_diff_status:
+            self._update_cloud_status(log_entry)
+        else:
+            self.status.update(self.prefix + log_entry)
+
+    def set_prefix(self, prefix_string):
+        self.prefix = prefix_string
+
+    def cloud_diff_started(self, model_name):
+        self.cloud_diff_status[model_name] = "[yellow]In Progress[/]"
+        self._update_cloud_status()
+
+    def cloud_diff_finished(self, model_name):
+        self.cloud_diff_status[model_name] = "[green]Finished   [/]"
+        self._update_cloud_status()
+
+    def _update_cloud_status(self, log=None):
+        cloud_status_string = "\n"
+        for model_name, status in self.cloud_diff_status.items():
+            cloud_status_string += f"{status} {model_name}\n"
+        self.status.update(f"{cloud_status_string}{log or ''}")

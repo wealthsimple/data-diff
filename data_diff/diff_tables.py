@@ -150,8 +150,8 @@ class DiffResultWrapper:
 
         if is_dbt:
             string_output = dbt_diff_string_template(
-                diff_stats.diff_by_sign["-"],
                 diff_stats.diff_by_sign["+"],
+                diff_stats.diff_by_sign["-"],
                 diff_stats.diff_by_sign["!"],
                 diff_stats.unchanged,
                 diff_stats.extra_column_diffs,
@@ -175,8 +175,8 @@ class DiffResultWrapper:
 
         return string_output
 
-    def get_stats_dict(self):
-        diff_stats = self._get_stats()
+    def get_stats_dict(self, is_dbt: bool = False):
+        diff_stats = self._get_stats(is_dbt)
         json_output = {
             "rows_A": diff_stats.table1_count,
             "rows_B": diff_stats.table2_count,
@@ -187,7 +187,7 @@ class DiffResultWrapper:
             "total": sum(diff_stats.diff_by_sign.values()),
             "stats": self.stats,
         }
-
+        json_output["values"] = diff_stats.extra_column_diffs or {}
         return json_output
 
 

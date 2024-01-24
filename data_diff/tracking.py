@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional
 import urllib.request
 from uuid import uuid4
 import toml
+from rich import get_console
 
 from .version import __version__
 
@@ -35,6 +36,42 @@ def _load_profile():
         with open(DEFAULT_PROFILE, "w") as f:
             toml.dump(conf, f)
     return conf
+
+
+def bool_ask_for_email() -> bool:
+    """
+    Checks the .datadiff.toml profile file for the asked_for_email key
+
+    Returns False immediately if --no-tracking or not in an interactive terminal
+
+    If found, return False (already asked for email)
+
+    If not found, add a key "asked_for_email", and return True (we should ask for email)
+
+    Returns:
+        bool: decision on whether to prompt the user for their email
+    """
+    console = get_console()
+    if g_tracking_enabled and console.is_interactive:
+        profile = _load_profile()
+
+        if "asked_for_email" not in profile:
+            profile["asked_for_email"] = ""
+            with open(DEFAULT_PROFILE, "w") as conf:
+                toml.dump(profile, conf)
+            return True
+    return False
+
+
+def bool_notify_about_extension() -> bool:
+    profile = _load_profile()
+    console = get_console()
+    if "notified_about_extension" not in profile and console.is_interactive:
+        profile["notified_about_extension"] = ""
+        with open(DEFAULT_PROFILE, "w") as conf:
+            toml.dump(profile, conf)
+        return True
+    return False
 
 
 g_tracking_enabled = True
@@ -116,6 +153,9 @@ def create_end_event_json(
     error: Optional[str],
     diff_id: Optional[int] = None,
     is_cloud: bool = False,
+    org_id: Optional[int] = None,
+    org_name: Optional[str] = None,
+    user_id: Optional[int] = None,
 ):
     return {
         "event": "os_diff_run_end",
@@ -137,6 +177,25 @@ def create_end_event_json(
             "diff_id": diff_id,
             "dbt_user_id": dbt_user_id,
             "dbt_version": dbt_version,
+            "dbt_project_id": dbt_project_id,
+            "org_id": org_id,
+            "org_name": org_name,
+            "user_id": user_id,
+        },
+    }
+
+
+def create_email_signup_event_json(email: str) -> Dict[str, Any]:
+    return {
+        "event": "os_diff_email_opt_in",
+        "properties": {
+            "distinct_id": get_anonymous_id(),
+            "token": TOKEN,
+            "time": time(),
+            "data_diff_version:": __version__,
+            "entrypoint_name": entrypoint_name,
+            "email": email,
+            "dbt_user_id": dbt_user_id,
             "dbt_project_id": dbt_project_id,
         },
     }

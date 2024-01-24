@@ -1,5 +1,4 @@
 from typing import List
-from ..utils import match_regexps
 from ..abcs.database_types import (
     DbPath,
     JSON,
@@ -18,6 +17,7 @@ from ..abcs.database_types import (
 from ..abcs.mixins import AbstractMixin_MD5, AbstractMixin_NormalizeValue
 from .base import BaseDialect, ThreadedDatabase, import_helper, ConnectError, Mixin_Schema, ColType
 from .base import MD5_HEXDIGITS, CHECKSUM_HEXDIGITS, _CHECKSUM_BITSIZE, TIMESTAMP_PRECISION_POS, Mixin_RandomSample
+from ..utils import match_regexps
 
 SESSION_TIME_ZONE = None  # Changed by the tests
 
@@ -82,7 +82,6 @@ class PostgresqlDialect(BaseDialect, Mixin_Schema):
         "character varying": Text,
         "varchar": Text,
         "text": Text,
-
         "json": JSON,
         "jsonb": JSON,
         "uuid": Native_UUID,
@@ -94,6 +93,10 @@ class PostgresqlDialect(BaseDialect, Mixin_Schema):
 
     def to_string(self, s: str):
         return f"{s}::varchar"
+
+    def concat(self, items: List[str]) -> str:
+        joined_exprs = " || ".join(items)
+        return f"({joined_exprs})"
 
     def _convert_db_precision_to_digits(self, p: int) -> int:
         # Subtracting 2 due to wierd precision issues in PostgreSQL

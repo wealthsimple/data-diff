@@ -416,11 +416,12 @@ class TableSegment:
         count, checksum = self.database.query(q, tuple)
         duration = time.monotonic() - start
         if duration > RECOMMENDED_CHECKSUM_DURATION:
-            self.logger.warning(
-                "Checksum is taking longer than expected (%.2f). "
-                "We recommend increasing --bisection-factor or decreasing --threads.",
-                duration,
-            )
+            self.logger.info('Checksum took %.2f seconds', duration)
+            # self.logger.warning(
+            #     "Checksum is taking longer than expected (%.2f). "
+            #     "We recommend increasing --bisection-factor or decreasing --threads.",
+            #     duration,
+            # )
         else:
             self.logger.info('Checksum took %.2f seconds', duration)
 

@@ -52,8 +52,10 @@ def diff_sets(a: list, b: list, key_indices: list = None, json_cols: dict = None
             if parsed_match:
                 to_warn = overriden_diff_cols - warned_diff_cols
                 for w in to_warn:
-                    logger.warning(f"Equivalent JSON objects with different string representations detected "
-                                   f"in column '{w}'. These cases are NOT reported as differences.")
+                    logger.warning(
+                        f"Equivalent JSON objects with different string representations detected "
+                        f"in column '{w}'. These cases are NOT reported as differences."
+                    )
                     warned_diff_cols.add(w)
                 continue
         yield from v
@@ -271,6 +273,12 @@ class HashDiffer(TableDiffer):
             self.set_query_timeouts([table1, table2])
 
             rows1, rows2 = self._threaded_call("get_values", [table1, table2])
+            json_cols = {
+                i: colname
+                for i, colname in enumerate(table1.extra_columns)
+                if isinstance(table1._schema[colname], JSON)
+            }
+            diff = list(diff_sets(rows1, rows2, json_cols))
             json_cols = {i: colname for i, colname in enumerate(table1.extra_columns)
                 if isinstance(table1._schema[colname], JSON)}
             diff = list(diff_sets(rows1, rows2, table1.key_indices, json_cols))
