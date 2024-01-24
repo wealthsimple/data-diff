@@ -119,7 +119,7 @@ class Dialect(BaseDialect, Mixin_Schema, Mixin_OptimizerHints):
         return f"({joined_exprs})"
 
     def timestamp_value(self, t: DbTime) -> str:
-        return "timestamp '%s'" % t.isoformat(" ")
+        return "TO_DATE('%s', 'YYYY-MM-DD HH24:MI:SS')" % t.isoformat(" ")
 
     def random(self) -> str:
         return "dbms_random.value"
