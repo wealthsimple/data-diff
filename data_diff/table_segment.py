@@ -367,7 +367,13 @@ class TableSegment:
         # - extra columns
         key_cols = self.true_key_columns or list(self.key_columns)
         group_col_offset = 1 if self.group_by_column else 0
-        return len(key_cols) + group_col_offset
+
+        if self.case_insensitive_idx(key_cols, self.update_column) != -1:
+            return self.case_insensitive_idx(key_cols, self.update_column)
+        elif self.group_by_column == self.update_column:
+            return len(key_cols)
+        else:
+            return len(key_cols) + group_col_offset
     
     def col_conversion(self, c: str) -> tuple[Optional[str], Optional[list]]:
         c_type = self._schema[c].__class__.__name__
