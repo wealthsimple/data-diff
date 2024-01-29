@@ -703,12 +703,12 @@ class TsGroupingHashDiffer(GroupingHashDiffer):
         # create TableSegments from each result row
         if len(table1_res) >= 1:
             segmented1 = [table1.new(group_min=str_to_dt(r[0]), 
-                                     group_max=str_to_dt(table1_res[idx+1][0])) for idx, r in enumerate(table1_res[:-1])]   
+                                     group_max=str_to_dt(add_group_grain(r[0], table1))) for r in table1_res[:-1]]   
             group_max1 = table1.group_max or add_group_grain(str_to_dt(table1_res[-1][0]), table1)
             segmented1.append(table1.new(group_min=str_to_dt(table1_res[-1][0]), group_max=group_max1))
 
             segmented2 = [table2.new(group_min=str_to_dt(r[0]), 
-                                     group_max=str_to_dt(table2_res[idx+1][0])) for idx, r in enumerate(table2_res[:-1])]
+                                     group_max=str_to_dt(add_group_grain(r[0], table2))) for r in table2_res[:-1]]
             group_max2 = table2.group_max or add_group_grain(str_to_dt(table2_res[-1][0]), table2)
             segmented2.append(table2.new(group_min=str_to_dt(table2_res[-1][0]), group_max=group_max2))
 
