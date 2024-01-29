@@ -676,8 +676,9 @@ class TsGroupingHashDiffer(GroupingHashDiffer):
             if r1[2] != r2[2]:
                 summary[r1[0]].append(f'ChSum mismatch: {r1[2]} != {r2[2]}')
         if len(summary):
-            summary_str = '\n'.join([f' - {k}: {", ".join(v)}' for k, v in summary.items()])
-            logging.info(f'Groups with discrepancies: {len(summary)}\n{summary_str}')
+            summary_str = '\n'.join([f' - {k}: {", ".join(v)}' for k, v in list(summary.items())[:5000]])
+            limit_warning = ' (Showing last 5000)' if len(summary) > 5000 else ''
+            logging.info(f'Groups with discrepancies: {len(summary)}{limit_warning}\n{summary_str}')
 
         def str_to_dt(dt) -> DbTime:
             if dt is None:
