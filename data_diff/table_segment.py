@@ -332,7 +332,7 @@ class TableSegment:
             update_col_idx_in_extras = self.case_insensitive_idx(extras, self.update_column)
 
             if update_col_idx_in_extras >= 0:
-                # remove from curr location (we'll end up with it in correct position in extras (front))
+                # remove from curr location (we'll end up with it in correct position in extras (front, but after group_by if exists))
                 extras.pop(update_col_idx_in_extras)
 
             if update_col_idx_in_keys == -1:
@@ -352,6 +352,12 @@ class TableSegment:
                 # as long as its not already in key columns, add to front of extras
                 extras = [self.group_by_column] + extras
 
+        if extras:
+            # make sure no key columns are also present in extras
+            for key_col in key_cols:
+                key_col_idx_in_extras = self.case_insensitive_idx(extras, key_col)
+                if key_col_idx_in_extras >= 0:
+                    extras.pop(key_col_idx_in_extras)
 
         return list(key_cols) + extras
     
