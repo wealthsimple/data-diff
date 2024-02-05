@@ -362,6 +362,12 @@ class TableSegment:
         return list(key_cols) + extras
     
     @property
+    def group_by_and_update_are_same_col(self) -> bool:
+        if isinstance(self.group_by_column, str) and isinstance(self.update_column, str):
+            return self.group_by_column.lower() == self.update_column.lower()
+        return False
+
+    @property
     def update_col_idx(self) -> int:
         if not self.update_column:
             raise ValueError(f'No update_column specified for table {self.table_path}')
@@ -376,7 +382,7 @@ class TableSegment:
 
         if self.case_insensitive_idx(key_cols, self.update_column) != -1:
             return self.case_insensitive_idx(key_cols, self.update_column)
-        elif self.group_by_column == self.update_column:
+        elif self.group_by_and_update_are_same_col:
             return len(key_cols)
         else:
             return len(key_cols) + group_col_offset
