@@ -33,6 +33,12 @@ class ExprNode(Compilable):
             if k == "source_table":
                 # Skip data-sources, we're only interested in data-parameters
                 continue
+            if isinstance(vs, dict):
+                # @rjd: this is vital in order for columns only referenced within Code() blocks to be resolved at compile time
+                for v in vs.values():
+                    if isinstance(v, ExprNode):
+                        yield from v._dfs_values()
+                continue
             if not isinstance(vs, (list, tuple)):
                 vs = [vs]
             for v in vs:
