@@ -871,6 +871,17 @@ class In(ExprNode):
     def compile(self, c: Compiler):
         elems = ", ".join(map(c.compile, self.list))
         return f"({c.compile(self.expr)} IN ({elems}))"
+    
+@dataclass
+class NotIn(ExprNode):
+    expr: Expr
+    list: Sequence[Expr]
+
+    type = bool
+
+    def compile(self, c: Compiler):
+        elems = ", ".join(map(c.compile, self.list))
+        return f"({c.compile(self.expr)} NOT IN ({elems}))"
 
 
 @dataclass
