@@ -4,7 +4,7 @@ import os
 from numbers import Number
 import logging
 from collections import defaultdict
-from typing import Any, Callable, Iterator, List, Tuple
+from typing import Any, Callable, Iterator, List, Optional, Tuple
 from operator import attrgetter, methodcaller
 
 from runtype import dataclass
@@ -539,6 +539,28 @@ class GroupingHashDiffer(HashDiffer):
 class TsGroupingHashDiffer(GroupingHashDiffer):
 
     stats: dict = {}
+    update_handling: Optional[str] = 'simultaneous'
+
+    def count_checksum_with_preemtive_updates(self, table1: TableSegment, table2: TableSegment, level: int):
+        t1_results = table1.count_and_checksum_by_ts_group_with_recent_updates(level)
+        logging.debug(f't1 results (len={len(t1_results)})\n' +
+                     '\n'.join([str(r) for r in t1_results[:10]]) + '\n...\n' + 
+                     '\n'.join([str(r) for r in t1_results[-10:]]))
+
+        # # get keys of recent updates in t1
+        recently_updated = [id_val for row in t1_results for id_val in row[3]]
+
+        logging.info(f'Excluding {len(recently_updated)} recently updated ids from destination query')
+
+        t2_results = table2.count_and_checksum_by_ts_group(level, exclude_ids=recently_updated)
+        logging.debug(f't2 results (len={len(t2_results)})\n' +
+                     '\n'.join([str(r) for r in t2_results[:10]]) + '\n...\n' + 
+                     '\n'.join([str(r) for r in t2_results[-10:]]))
+        
+        # remove last item from all rows of t1_results. Don't need the ids anymore
+        t1_results = [r[:-1] for r in t1_results]
+        
+        return t1_results, t2_results
 
     def _diff_segments(
         self,
@@ -566,7 +588,7 @@ class TsGroupingHashDiffer(GroupingHashDiffer):
                 segment1.min_key,
                 segment1.max_key,
             )
-            assert checksum1 is None and checksum2 is None
+            assert (checksum1 is None or checksum1 == 0) and (checksum2 is None or checksum2 == 0)
             info_tree.info.is_diff = False
             return
 
@@ -627,7 +649,6 @@ class TsGroupingHashDiffer(GroupingHashDiffer):
             out = [str(r) for r in res]
             logger.info('{}\n{}'.format(label, "\n".join(out)))
 
-        query_fns = []
         seg_path_str = seg_path or "root"
         group_range = f'{table1.group_min}..{table1.group_max}' if table1.group_min or table1.group_max else 'Full Range'
         row_count = max_rows or '?'
@@ -636,14 +657,14 @@ class TsGroupingHashDiffer(GroupingHashDiffer):
             f"group-range: {group_range}, "
             f"size = {row_count}"
         )
-        query_fns.append(partial(table1.count_and_checksum_by_ts_group, level=level))
-        query_fns.append(partial(table2.count_and_checksum_by_ts_group, level=level))
-
 
         self.set_query_timeouts([table1, table2])
 
         # submit grouping queries to DB threadpools
-        all_results = self._threaded_call('count_and_checksum_by_ts_group', [table1, table2], level=level)
+        if self.update_handling == 'preemptive':
+            all_results = self.count_checksum_with_preemtive_updates(table1, table2, level)
+        else:
+            all_results = self._threaded_call('count_and_checksum_by_ts_group', [table1, table2], level=level)
 
         table1_res = all_results[0]
         table2_res = all_results[1]
@@ -676,8 +697,9 @@ class TsGroupingHashDiffer(GroupingHashDiffer):
             if r1[2] != r2[2]:
                 summary[r1[0]].append(f'ChSum mismatch: {r1[2]} != {r2[2]}')
         if len(summary):
-            summary_str = '\n'.join([f' - {k}: {", ".join(v)}' for k, v in summary.items()])
-            logging.info(f'Groups with discrepancies: {len(summary)}\n{summary_str}')
+            summary_str = '\n'.join([f' - {k}: {", ".join(v)}' for k, v in list(summary.items())[:5000]])
+            limit_warning = ' (Showing last 5000)' if len(summary) > 5000 else ''
+            logging.info(f'Groups with discrepancies: {len(summary)}{limit_warning}\n{summary_str}')
 
         def str_to_dt(dt) -> DbTime:
             if dt is None:

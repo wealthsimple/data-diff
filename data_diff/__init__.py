@@ -186,6 +186,23 @@ def diff_tables(
                 max_threadpool_size=max_threadpool_size,
                 timeout=timeout
             )
+        elif segments[0].hash_query_type == 'ts_grouped_preempt' and segments[1].hash_query_type == 'ts_grouped_preempt':
+            logging.info('Diffing with HASHDIFF ts_grouped_preempt query')
+
+            # make sure update_columns is not None for both tables
+            assert segments[0].update_column is not None and segments[1].update_column is not None, "update_column is required for ts_grouped_preempt query"
+
+            # make sure max_update is not None for both tables
+            assert segments[0].max_update is not None and segments[1].max_update is not None, "max_update is required for ts_grouped_preempt query"
+
+            differ = TsGroupingHashDiffer(
+                bisection_factor=bisection_factor,
+                bisection_threshold=bisection_threshold,
+                threaded=threaded,
+                max_threadpool_size=max_threadpool_size,
+                timeout=timeout,
+                update_handling='preemptive'
+            )
         else:
             logging.info('Diffing with HASHDIFF grouped query')
             differ = GroupingHashDiffer(

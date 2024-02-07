@@ -7,6 +7,8 @@ from itertools import product
 
 from runtype import dataclass
 
+from data_diff.sqeleton.queries.ast_classes import NotIn
+
 from .utils import safezip, Vector, split_space
 from data_diff.sqeleton.utils import ArithString
 from data_diff.sqeleton.databases import Database, DbPath, DbKey, DbTime
@@ -14,6 +16,7 @@ from data_diff.sqeleton.schema import Schema, create_schema
 from data_diff.sqeleton.queries import Count, Checksum, SKIP, table, this, Expr, min_, max_, Code, Compiler
 from data_diff.sqeleton.queries.extras import ApplyFuncAndNormalizeAsString, NormalizeAsString
 from data_diff.sqeleton.abcs import database_types as DB_TYPES
+from data_diff.sqeleton import code
 
 
 LOG_FORMAT = "[%(db)s] %(message)s"
@@ -114,6 +117,37 @@ def create_mesh_from_points(*values_per_dim: list) -> List[Tuple[Vector, Vector]
     expected_len = int_product(len(v) - 1 for v in values_per_dim)
     assert len(res) == expected_len, (len(res), expected_len)
     return res
+
+
+GRAINS = {
+    'year': {
+        'ora': "TRUNC({group_by_col}, 'Y')"
+    },
+    'month': {
+        'ora': "TRUNC({group_by_col}, 'MM')"
+    },
+    'day': {
+        'ora': "TRUNC({group_by_col}, 'DD')"
+    },
+    'hour': {
+        'ora': "TRUNC({group_by_col}, 'HH')"
+    },
+    'minute': {
+        'ora': "TRUNC({group_by_col}, 'MI')"
+    },
+    'second': {
+        'ora': "cast({group_by_col} as date)"
+    }
+    # 'half_second': {
+    #     'ora': "TRUNC({group_by_col}, )"
+    # }
+    # 'tenth_second': {
+    #     'ora': "TRUNC({group_by_col}, )"
+    # }
+    # 'millisecond':  {
+    #     'ora': "TRUNC({group_by_col}, )"
+    # }
+}
 
 
 @dataclass
@@ -257,12 +291,17 @@ class TableSegment:
         return table(*self.table_path, schema=self._schema)
 
     def make_select(self, use_min_update = True, use_max_update = True,
-                    use_group_min = True, use_group_max = True):
+                    use_group_min = True, use_group_max = True,
+                    exclude_ids = None):
+        if exclude_ids:
+            assert len(self.key_columns) == 1, 'Exclusion of IDs only supported for single-column PKs'
+
         return self.source_table.where(
             *self._make_key_range(), 
             *self._make_update_range(include_min=use_min_update, include_max=use_max_update), 
             *self._make_groupby_range(include_min=use_group_min, include_max=use_group_max), 
-            Code(self._where()) if self.where else SKIP
+            Code(self._where()) if self.where else SKIP,
+            NotIn(self.key_cols_repr, exclude_ids) if exclude_ids else SKIP
         )
 
     def get_values(self) -> list:
@@ -332,7 +371,7 @@ class TableSegment:
             update_col_idx_in_extras = self.case_insensitive_idx(extras, self.update_column)
 
             if update_col_idx_in_extras >= 0:
-                # remove from curr location (we'll end up with it in correct position in extras (front))
+                # remove from curr location (we'll end up with it in correct position in extras (front, but after group_by if exists))
                 extras.pop(update_col_idx_in_extras)
 
             if update_col_idx_in_keys == -1:
@@ -352,9 +391,21 @@ class TableSegment:
                 # as long as its not already in key columns, add to front of extras
                 extras = [self.group_by_column] + extras
 
+        if extras:
+            # make sure no key columns are also present in extras
+            for key_col in key_cols:
+                key_col_idx_in_extras = self.case_insensitive_idx(extras, key_col)
+                if key_col_idx_in_extras >= 0:
+                    extras.pop(key_col_idx_in_extras)
 
         return list(key_cols) + extras
     
+    @property
+    def group_by_and_update_are_same_col(self) -> bool:
+        if isinstance(self.group_by_column, str) and isinstance(self.update_column, str):
+            return self.group_by_column.lower() == self.update_column.lower()
+        return False
+
     @property
     def update_col_idx(self) -> int:
         if not self.update_column:
@@ -370,7 +421,7 @@ class TableSegment:
 
         if self.case_insensitive_idx(key_cols, self.update_column) != -1:
             return self.case_insensitive_idx(key_cols, self.update_column)
-        elif self.group_by_column == self.update_column:
+        elif self.group_by_and_update_are_same_col:
             return len(key_cols)
         else:
             return len(key_cols) + group_col_offset
@@ -402,6 +453,13 @@ class TableSegment:
                 normalized_cols.append(NormalizeAsString(this[c]))
 
         return normalized_cols
+    
+    @property
+    def key_cols_repr(self) -> List[Expr]:
+        if len(self.key_columns) == 1:
+            return this[self.key_columns[0]]
+        else:
+            return Code(f'({",".join([c for c in self.key_columns])})')
     
     @property
     def key_indices(self) -> Tuple[str]:
@@ -501,53 +559,78 @@ class TableSegment:
 
         return rows
     
-    def count_and_checksum_by_ts_group(self, level: int) -> Tuple[Tuple[int, int]]:
-        GRAINS = {
-            'year': {
-                'ora': "TRUNC({group_by_col}, 'Y')"
-            },
-            'month': {
-                'ora': "TRUNC({group_by_col}, 'MM')"
-            },
-            'day': {
-                'ora': "TRUNC({group_by_col}, 'DD')"
-            },
-            'hour': {
-                'ora': "TRUNC({group_by_col}, 'HH')"
-            },
-            'minute': {
-                'ora': "TRUNC({group_by_col}, 'MI')"
-            },
-            'second': {
-                'ora': "cast({group_by_col} as date)"
-            }
-            # 'half_second': {
-            #     'ora': "TRUNC({group_by_col}, )"
-            # }
-            # 'tenth_second': {
-            #     'ora': "TRUNC({group_by_col}, )"
-            # }
-            # 'millisecond':  {
-            #     'ora': "TRUNC({group_by_col}, )"
-            # }
-        }
-
-
-        group_by_col = self.group_by_column
+    def get_group_by_expr(self, level: int) -> str:
         curr_grain = self.group_grains[level]
-
-        # temp hack (should utilize sqeleton)
+        # temp hack (should utilize sqeleton)   
         if self.database.name in ['Redshift', 'PostgreSQL']:
-            group_by_expr = f"DATE_TRUNC('{curr_grain}', {group_by_col})"
+            group_by_expr = f"DATE_TRUNC('{curr_grain}', {self.group_by_column})"
         elif self.database.name == 'Oracle':
-            group_by_expr = GRAINS[curr_grain]['ora'].format(group_by_col=group_by_col)
+            group_by_expr = GRAINS[curr_grain]['ora'].format(group_by_col=self.group_by_column)
         else:
             raise NotImplementedError(f'Unsupported database for checksum by TS group: {self.database.name}')
+
+        return group_by_expr
+
+    def count_and_checksum_by_ts_group_with_recent_updates(self, level: int) -> Tuple[Tuple[int, int]]:
+
+        # NOTE: the below query actually works with composite PKs. However, I can't find a portable
+        #       way to pass the composite ID's to the next query as the `exclude_ids` parameter.
+        #       Sqeleton doesn't seem able to handle syntax like `WHERE (id1, id2) NOT IN ((1, 2), (3, 4))`
+        #       and hardcoding the formatting will get messy, and difficult (eg. different key data types)
+        assert len(self.key_columns) == 1, 'Exclusion of IDs only supported for single-column PKs'
+        assert self.database.name in ['Redshift', 'PostgreSQL'], 'Unsupported database for preemtive ts_group checkusm'
+
+        group_by_col = self.group_by_column
+        group_by_expr = self.get_group_by_expr(level)
 
         maybe_optimizer_hints = \
             {'optimizer_hints': self.optimizer_hints} if level < self.opt_hints_depth else {}
 
-        q = (self.make_select(use_max_update=True)
+        q = (self.make_select(use_max_update=False)
+            .select(
+                Code(group_by_expr),
+                code("{count} filter (where {update_cond})",
+                     count=Count(),
+                     update_cond=this[self.update_column] < self.max_update),
+                code("{checksum} filter (where {update_cond})",
+                     checksum=Checksum(self._relevant_columns_repr('select_checksum')),
+                     update_cond=this[self.update_column] < self.max_update),
+                code("array_remove(array_agg(CASE WHEN {update_cond} THEN {key_columns} END), NULL)", 
+                     update_cond=this[self.update_column] >= self.max_update,
+                     key_columns=self.key_cols_repr),
+                **maybe_optimizer_hints)
+            .order_by(Code(group_by_expr))
+            .group_by(self.source_table[group_by_col])
+            .agg(self.source_table[group_by_col])
+            .table
+            .replace(group_by_exprs=[Code(group_by_expr)]))
+        
+        start = time.monotonic()
+        rows = self.database.query(q, list)
+        duration = time.monotonic() - start
+
+        self.logger.info('Checksum_by_ts_group_preemtive query took %s seconds', duration)
+
+        # this query can result in null/None checksum & count, so set those instances to 0 manually
+        for idx, r in enumerate(rows):
+            r = list(r)
+            if r[1] is None:
+                r[1] = 0
+                rows[idx] = tuple(r)
+            if r[2] is None:
+                r[2] = 0
+                rows[idx] = tuple(r)
+
+        return rows
+    
+    def count_and_checksum_by_ts_group(self, level: int, exclude_ids = None) -> Tuple[Tuple[int, int]]:
+        group_by_col = self.group_by_column
+        group_by_expr = self.get_group_by_expr(level)
+        
+        maybe_optimizer_hints = \
+            {'optimizer_hints': self.optimizer_hints} if level < self.opt_hints_depth else {}
+        
+        q = (self.make_select(use_max_update=True, exclude_ids=exclude_ids)
             .select(
                 Code(group_by_expr),
                 Count(), 
